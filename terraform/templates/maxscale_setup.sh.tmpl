@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# This script is run on the bastion host to configure the DB hosts
+# On each server
+%{ for index, db in db_servers ~}
+
+ssh-keyscan ${db.private_ip} >> ~/.ssh/known_hosts
+
+# Copy install script
+scp ~/deploy/scripts/install_mariadb.sh ${db_user}@${db.private_ip}:~/install_mariadb.sh
+# Copy Galera Config
+scp ~/deploy/config/galera.${index}.cnf ${db_user}@${db.private_ip}:~/10-galera.cnf
+
+# Run the install script
+ssh ${db_user}@${db.private_ip} 'chmod +x ~/install_mariadb.sh; sudo ~/install_mariadb.sh'
+# Configure Galera
+ssh ${db_user}@${db.private_ip} 'sudo mv ~/10-galera.cnf /etc/my.cnf.d/10-galera.cnf'
+
+%{ if index == 0 ~}
+# If index is 0, create the cluster
+scp ~/deploy/sql/*.sql ${db_user}@${db.private_ip}:~/
+
+ssh ${db_user}@${db.private_ip} 'sudo galera_new_cluster'
+ssh ${db_user}@${db.private_ip} 'sudo mysql < /home/centos/users.sql'
+ssh ${db_user}@${db.private_ip} 'sudo mysql world < /home/centos/world.sql'
+ssh ${db_user}@${db.private_ip} 'rm -rf /home/centos/*.sql'
+%{ else ~}
+# Else, start MariaDB
+ssh ${db_user}@${db.private_ip} 'sudo systemctl start mariadb'
+%{ endif ~}
+
+%{ endfor ~}
+
+
+%{ for index, maxscale in maxscale_servers ~}
+ssh-keyscan ${maxscale.private_ip} >> ~/.ssh/known_hosts
+
+scp ~/deploy/scripts/install_maxscale.sh ${db_user}@${maxscale.private_ip}:~/install_maxscale.sh
+scp ~/deploy/config/maxscale.conf ${db_user}@${maxscale.private_ip}:~/maxscale.conf
+
+# Install Maxscale
+ssh ${db_user}@${maxscale.private_ip} 'chmod +x ~/install_maxscale.sh; sudo ~/install_maxscale.sh'
+# Move Original Config
+ssh ${db_user}@${maxscale.private_ip} 'sudo mv /etc/maxscale.cnf /etc/maxscale.orig.cnf'
+# Install desired config
+ssh ${db_user}@${maxscale.private_ip} 'sudo mv ~/maxscale.conf /etc/maxscale.cnf'
+# Start MaxScale
+ssh ${db_user}@${maxscale.private_ip} 'sudo systemctl start maxscale'
+%{ endfor ~}

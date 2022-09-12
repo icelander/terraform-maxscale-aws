@@ -1,0 +1,56 @@
+# Globals
+[maxscale]
+threads=1
+ 
+# Servers
+%{ for index, db in db_servers ~}
+[galera${index}]
+type=server
+address=${db.private_ip}
+port=3306
+protocol=MySQLBackend
+%{ endfor ~}
+
+# Monitoring for the servers
+[Galera-Monitor]
+type=monitor
+module=galeramon
+servers=${db_names}
+user=dbmonitor
+password=really_secure_password
+monitor_interval=2000ms
+ 
+# Galera router service
+[Galera-Service]
+type=service
+router=readwritesplit
+servers=${db_names}
+user=dbrepl
+password=really_secure_password
+ 
+# Galera cluster listener
+[Galera-Listener]
+type=listener
+service=Galera-Service
+protocol=MySQLClient
+port=3306
+ 
+# # MaxAdmin Service
+# [MaxAdmin]
+# type=service
+# router=cli
+
+# # MaxAdmin-listener
+# [MaxAdmin-Listener]
+# type=listener
+# service=MaxAdmin
+# protocol=maxscaled
+# socket=default
+
+# # MaxAdmin-Inet-Listener
+# [MaxAdmin-Inet-Listener]
+# type=listener
+# service=MaxAdmin
+# protocol=maxscaled
+# address=localhost
+# port=6603
